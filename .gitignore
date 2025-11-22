@@ -24,3 +24,18 @@ logs/
 # Build
 dist/
 build/
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Temporary folders
+tmp/
+temp/
+
+# Workflow and spec files
+.spec-workflow/
