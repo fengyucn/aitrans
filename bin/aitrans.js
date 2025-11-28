@@ -8,10 +8,11 @@ const packageJson = require('../package.json');
 // 设置命令行选项
 program
   .version(packageJson.version, '-v, --version')
-  .description('AI-powered command line translation tool')
+  .description('AI-powered command line translation tool\n\n使用前请运行: aitrans --setup  # 查看环境配置指南')
   .option('-t, --text <text>', '指定要翻译的文本')
   .option('-l, --lang <lang>', '指定目标语言（默认：zh）', 'zh')
-  .option('--list-languages', '显示支持的语言列表');
+  .option('--list-languages', '显示支持的语言列表')
+  .option('--setup', '显示环境配置指南');
 
 // 解析命令行参数
 program.parse(process.argv);
@@ -19,7 +20,7 @@ const options = program.opts();
 
 // 处理标准输入
 let stdinData = '';
-if (!process.stdin.isTTY) {
+if (!process.stdin.isTTY && !options.setup && !options.listLanguages) {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (data) => {
     stdinData += data;
@@ -32,9 +33,58 @@ if (!process.stdin.isTTY) {
   handleCommandLine(options);
 }
 
+// 显示环境配置指南
+function showSetupGuide() {
+  console.log(chalk.cyan('\n🌍 AITrans 环境配置指南'));
+  console.log(chalk.cyan('===========================\n'));
+
+  console.log(chalk.yellow('1. 创建配置目录：'));
+  console.log(chalk.white('   mkdir -p ~/.aitrans\n'));
+
+  console.log(chalk.yellow('2. 创建配置文件：'));
+  console.log(chalk.white('   nano ~/.aitrans/.env\n'));
+
+  console.log(chalk.yellow('3. 添加以下配置内容：'));
+  console.log(chalk.green(`
+   # 必需配置
+   AI_API_KEY=your_openai_api_key_here
+
+   # 可选配置
+   AI_API_ENDPOINT=https://api.openai.com/v1/chat/completions
+   AI_MODEL=gpt-3.5-turbo
+   AI_TEMPERATURE=0.3
+   AI_API_PROXY=http://your-proxy:port
+  `));
+
+  console.log(chalk.yellow('4. 获取 OpenAI API 密钥：'));
+  console.log(chalk.white('   访问 https://platform.openai.com/ 创建 API 密钥\n'));
+
+  console.log(chalk.yellow('5. 快速配置示例：'));
+  console.log(chalk.white(`
+   mkdir -p ~/.aitrans
+   cat > ~/.aitrans/.env << EOF
+   AI_API_KEY=sk-your-openai-api-key-here
+   AI_MODEL=gpt-3.5-turbo
+   AI_TEMPERATURE=0.3
+   EOF
+  `));
+
+  console.log(chalk.yellow('6. 验证配置：'));
+  console.log(chalk.white('   aitrans --list-languages\n'));
+
+  console.log(chalk.blue('📝 配置文件位置: ~/.aitrans/.env'));
+  console.log(chalk.blue('📚 更多帮助: aitrans --help\n'));
+}
+
 // 处理命令行参数的函数
 async function handleCommandLine(options) {
   try {
+    // 显示环境配置指南
+    if (options.setup) {
+      showSetupGuide();
+      return;
+    }
+
     // 显示支持的语言列表
     if (options.listLanguages) {
       listLanguages();
@@ -45,7 +95,11 @@ async function handleCommandLine(options) {
     const text = options.text || program.args.join(' ');
     if (!text) {
       console.error(chalk.red('错误：请提供要翻译的文本'));
-      program.help();
+      console.log(chalk.cyan('\n💡 使用帮助：'));
+      console.log(chalk.white('   aitrans --setup     # 查看环境配置指南'));
+      console.log(chalk.white('   aitrans --help      # 查看完整帮助信息'));
+      console.log(chalk.white('   aitrans --list-languages  # 查看支持的语言'));
+      process.exit(1);
       return;
     }
 

@@ -1,6 +1,6 @@
 {
   "name": "aitrans",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI-powered command line translation tool",
   "main": "src/index.js",
   "bin": {
@@ -16,9 +16,17 @@
     "ai",
     "language"
   ],
-  "author": "",
+  "author": "fengyucn",
   "license": "ISC",
   "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:fengyucn/aitrans.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fengyucn/aitrans/issues"
+  },
+  "homepage": "https://github.com/fengyucn/aitrans#readme",
   "dependencies": {
     "axios": "^1.6.2",
     "chalk": "^4.1.2",
