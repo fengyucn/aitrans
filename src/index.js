@@ -5,32 +5,45 @@ const ora = require('ora');
 const dotenv = require('dotenv');
 const { isLanguageSupported, getLanguageName, getAllLanguages } = require('./languages');
 
-// 加载环境变量 - 从用户主目录和当前目录加载
-dotenv.config({ path: path.join(process.env.HOME, '.aitrans/.env') });
-dotenv.config(); // 仍然支持当前目录的.env文件
+// 检查是否是帮助或设置命令（这些命令不需要环境变量）
+const isHelpOrSetupCommand = process.argv.includes('--help') ||
+                            process.argv.includes('-h') ||
+                            process.argv.includes('--setup');
 
-// 检查必要的环境变量
-if (!process.env.AI_API_KEY) {
-  console.error(chalk.red('错误：未设置 AI_API_KEY 环境变量'));
-  process.exit(1);
+// 只有在非帮助/设置命令时才检查环境变量
+if (!isHelpOrSetupCommand) {
+  // 加载环境变量 - 从用户主目录和当前目录加载
+  dotenv.config({ path: path.join(process.env.HOME, '.aitrans/.env') });
+  dotenv.config(); // 仍然支持当前目录的.env文件
+
+  // 检查必要的环境变量
+  if (!process.env.AI_API_KEY) {
+    console.error(chalk.red('错误：未设置 AI_API_KEY 环境变量'));
+    console.error(chalk.yellow('请运行 "aitrans --setup" 查看配置指南'));
+    process.exit(1);
+  }
 }
 
-// 加载并验证环境变量配置
-const API_ENDPOINT = process.env.AI_API_ENDPOINT || 'https://api.openai.com/v1/chat/completions';
-const API_KEY = process.env.AI_API_KEY;
-const AI_MODEL = process.env.AI_MODEL || 'gpt-3.5-turbo';
-const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.3');
-const AI_API_PROXY = process.env.AI_API_PROXY;
+// 加载并验证环境变量配置（只有在需要时才加载）
+let API_ENDPOINT, API_KEY, AI_MODEL, AI_TEMPERATURE, AI_API_PROXY, axiosInstance;
 
-// 创建 axios 实例
-const axiosInstance = axios.create({
-  baseURL: API_ENDPOINT,
-  headers: {
-    'Authorization': `Bearer ${API_KEY}`,
-    'Content-Type': 'application/json'
-  },
-  ...(AI_API_PROXY ? { proxy: { host: new URL(AI_API_PROXY).hostname, port: new URL(AI_API_PROXY).port } } : {})
-});
+function initializeConfig() {
+  API_ENDPOINT = process.env.AI_API_ENDPOINT || 'https://api.openai.com/v1/chat/completions';
+  API_KEY = process.env.AI_API_KEY;
+  AI_MODEL = process.env.AI_MODEL || 'gpt-3.5-turbo';
+  AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.3');
+  AI_API_PROXY = process.env.AI_API_PROXY;
+
+  // 创建 axios 实例
+  axiosInstance = axios.create({
+    baseURL: API_ENDPOINT,
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    ...(AI_API_PROXY ? { proxy: { host: new URL(AI_API_PROXY).hostname, port: new URL(AI_API_PROXY).port } } : {})
+  });
+}
 
 /**
  * 翻译文本
@@ -39,6 +52,11 @@ const axiosInstance = axios.create({
  * @returns {Promise<string>} 翻译结果
  */
 async function translate(text, targetLang = 'zh') {
+  // 确保配置已初始化
+  if (!axiosInstance) {
+    initializeConfig();
+  }
+
   // 验证目标语言
   if (!isLanguageSupported(targetLang)) {
     throw new Error(`不支持的目标语言: ${targetLang}`);
@@ -102,7 +120,43 @@ function listLanguages() {
   console.log('\n');
 }
 
+/**
+ * 显示帮助信息
+ */
+function showHelp() {
+  console.log(chalk.cyan('\n🌍 AITrans - AI 命令行翻译工具'));
+  console.log(chalk.cyan('================================\n'));
+
+  console.log(chalk.yellow('使用方法：'));
+  console.log(chalk.white('  aitrans [选项] "要翻译的文本"'));
+  console.log(chalk.white('  echo "hello world" | aitrans [选项]\n'));
+
+  console.log(chalk.yellow('选项：'));
+  console.log(chalk.green('  -t, --text <text>     ') + chalk.white('指定要翻译的文本'));
+  console.log(chalk.green('  -l, --lang <lang>     ') + chalk.white('指定目标语言（默认：zh）'));
+  console.log(chalk.green('      --list-languages') + chalk.white('显示支持的语言列表'));
+  console.log(chalk.green('      --setup          ') + chalk.white('显示环境配置指南'));
+  console.log(chalk.green('  -h, --help            ') + chalk.white('显示帮助信息'));
+  console.log(chalk.green('  -v, --version         ') + chalk.white('显示版本信息\n'));
+
+  console.log(chalk.yellow('示例：'));
+  console.log(chalk.white('  aitrans "hello world"                                # 翻译成中文'));
+  console.log(chalk.white('  aitrans -l ja "hello world"                          # 翻译成日文'));
+  console.log(chalk.white('  aitrans -t "hello world" -l en                       # 指定文本和语言'));
+  console.log(chalk.white('  echo "bonjour" | aitrans -l zh                       # 管道输入'));
+  console.log(chalk.white('  aitrans --list-languages                             # 查看支持的语言\n'));
+
+  console.log(chalk.yellow('首次使用：'));
+  console.log(chalk.white('  1. 运行 aitrans --setup 查看配置指南'));
+  console.log(chalk.white('  2. 配置 AI_API_KEY 环境变量'));
+  console.log(chalk.white('  3. 开始翻译！\n'));
+
+  console.log(chalk.blue('📝 配置文件: ~/.aitrans/.env'));
+  console.log(chalk.blue('🌐 项目主页: https://github.com/fengyucn/aitrans\n'));
+}
+
 module.exports = {
   translate,
-  listLanguages
+  listLanguages,
+  showHelp
 };

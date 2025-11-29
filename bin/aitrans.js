@@ -2,7 +2,7 @@
 
 const { program } = require('commander');
 const chalk = require('chalk');
-const { translate, listLanguages } = require('../src/index');
+const { translate, listLanguages, showHelp } = require('../src/index');
 const packageJson = require('../package.json');
 
 // 设置命令行选项
@@ -14,19 +14,37 @@ program
   .option('--list-languages', '显示支持的语言列表')
   .option('--setup', '显示环境配置指南');
 
+// 自定义帮助处理
+program.configureHelp({
+  showGlobalOptions: true
+});
+
+// 重写帮助输出
+program.outputHelp = () => {
+  const { showHelp } = require('../src/index');
+  showHelp();
+  process.exit(0);
+};
+
 // 解析命令行参数
 program.parse(process.argv);
 const options = program.opts();
 
 // 处理标准输入
 let stdinData = '';
-if (!process.stdin.isTTY && !options.setup && !options.listLanguages) {
+if (!process.stdin.isTTY && !options.setup && !options.listLanguages && !options.text) {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (data) => {
     stdinData += data;
   });
   process.stdin.on('end', async () => {
-    await handleTranslation(stdinData.trim(), options.lang);
+    const text = stdinData.trim();
+    if (text) {
+      await handleTranslation(text, options.lang);
+    } else {
+      // 如果标准输入为空，则尝试处理命令行参数
+      handleCommandLine(options);
+    }
   });
 } else {
   // 处理命令行参数

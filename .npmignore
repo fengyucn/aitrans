@@ -63,8 +63,8 @@ build/
 requirements.md
 docs/
 CONTRIBUTING.md
-CHANGELOG.md
 !README.md
+!CHANGELOG.md
 
 # 其他配置文件
 .eslintrc*
