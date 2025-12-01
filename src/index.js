@@ -91,7 +91,10 @@ async function translate(text, targetLang = 'zh') {
   } catch (error) {
     spinner.fail('翻译失败');
     if (error.response) {
-      throw new Error(`API 错误: ${error.response.data.message || '未知错误'}`);
+      if (error.response.status === 401 || error.response.status === 403) {
+        throw new Error('API 密钥无效或没有权限，请检查 AI_API_KEY');
+      }
+      throw new Error(`API 错误: ${error.response.data.message || '未知错误'} (状态码: ${error.response.status})`);
     } else if (error.request) {
       throw new Error('网络请求失败，请检查网络连接');
     } else {

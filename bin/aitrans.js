@@ -111,14 +111,20 @@ async function handleCommandLine(options) {
 
     // 获取要翻译的文本
     const text = options.text || program.args.join(' ');
-    if (!text) {
-      console.error(chalk.red('错误：请提供要翻译的文本'));
+    const MAX_TEXT_LENGTH = 4000; // 设置最大文本长度限制
+
+    if (!text || text.trim() === '') {
+      console.error(chalk.red('错误：请提供要翻译的文本。输入文本不能为空。'));
       console.log(chalk.cyan('\n💡 使用帮助：'));
       console.log(chalk.white('   aitrans --setup     # 查看环境配置指南'));
       console.log(chalk.white('   aitrans --help      # 查看完整帮助信息'));
       console.log(chalk.white('   aitrans --list-languages  # 查看支持的语言'));
       process.exit(1);
-      return;
+    }
+
+    if (text.length > MAX_TEXT_LENGTH) {
+      console.error(chalk.red(`错误：输入文本过长。最大允许长度为 ${MAX_TEXT_LENGTH} 个字符，但您提供了 ${text.length} 个字符。`));
+      process.exit(1);
     }
 
     // 执行翻译
