@@ -87,17 +87,73 @@ async function translate(text, targetLang = 'zh') {
           content: prompt
         }
       ],
-      temperature: AI_TEMPERATURE
+      temperature: AI_TEMPERATURE,
+      stream: true
+    }, {
+      responseType: 'stream'
     });
 
-    spinner.succeed('翻译完成');
-    return response.data.choices[0].message.content.trim();
+    let fullContent = '';
+    let isFirstChunk = true;
+    let buffer = '';
+
+    return new Promise((resolve, reject) => {
+      response.data.on('data', (chunk) => {
+        buffer += chunk.toString();
+        let lines = buffer.split('\n');
+        buffer = lines.pop(); // 保留可能不完整的最后一行
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
+
+          const data = trimmedLine.slice(6);
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices[0]?.delta?.content;
+            if (content) {
+              if (isFirstChunk) {
+                spinner.stop();
+                isFirstChunk = false;
+              }
+              process.stdout.write(content);
+              fullContent += content;
+            }
+          } catch (e) {
+            // 忽略解析错误
+          }
+        }
+      });
+
+      response.data.on('end', () => {
+        if (!isFirstChunk) {
+          process.stdout.write('\n');
+          spinner.succeed('翻译完成');
+        } else {
+          spinner.fail('翻译失败：未收到有效回复');
+        }
+        resolve(fullContent.trim());
+      });
+
+      response.data.on('error', (err) => {
+        spinner.fail('翻译失败');
+        reject(err);
+      });
+    });
   } catch (error) {
     spinner.fail('翻译失败');
     if (error.response) {
       if (error.response.status === 401 || error.response.status === 403) {
         throw new Error('API 密钥无效或没有权限，请检查 AI_API_KEY');
       }
+
+      // 流模式下错误信息可能在流中，这里做基础处理
+      if (error.response.data && typeof error.response.data.on === 'function') {
+        throw new Error(`API 请求失败 (状态码: ${error.response.status})，请检查网络或配置。`);
+      }
+
       throw new Error(`API 错误: ${error.response.data.message || '未知错误'} (状态码: ${error.response.status})`);
     } else if (error.request) {
       throw new Error('网络请求失败，请检查网络连接');

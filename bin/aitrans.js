@@ -128,8 +128,7 @@ async function handleCommandLine(options) {
 async function handleTranslation(text, targetLang) {
   try {
     const { translate } = require('../src/index');
-    const result = await translate(text, targetLang);
-    console.log(result);
+    await translate(text, targetLang);
   } catch (error) {
     console.error(chalk.red('翻译错误：'), error.message);
     process.exit(1);

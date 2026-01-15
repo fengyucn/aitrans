@@ -3,16 +3,21 @@
 .env.*
 !.env.example
 
-# 开发相关文件
-.git/
-.gitignore
-.github/
+# IDE 和编辑器配置
+.marscode/
+.qoder/
+.trunk/
+.claude/
+.spec-workflow/
 .vscode/
 .idea/
 *.swp
 *.swo
-.claude/
-.spec-workflow/
+
+# 开发相关文件
+.git/
+.gitignore
+.github/
 
 # 测试文件
 test/
@@ -63,6 +68,7 @@ build/
 requirements.md
 docs/
 CONTRIBUTING.md
+AGENTS.md
 !README.md
 !CHANGELOG.md
 
@@ -70,3 +76,6 @@ CONTRIBUTING.md
 .eslintrc*
 .prettierrc*
 editorconfig
+
+# 旧的打包文件
+*.tgz
