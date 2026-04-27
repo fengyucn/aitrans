@@ -2,8 +2,10 @@
 
 const { program } = require('commander');
 const chalk = require('chalk');
+const { translate, listLanguages, showHelp } = require('../src/index');
 const packageJson = require('../package.json');
 
+// 设置命令行选项
 program
   .version(packageJson.version, '-v, --version')
   .description('AI-powered command line translation tool\n\n使用前请运行: aitrans --setup  # 查看环境配置指南')
@@ -12,10 +14,12 @@ program
   .option('--list-languages', '显示支持的语言列表')
   .option('--setup', '显示环境配置指南');
 
+// 自定义帮助处理
 program.configureHelp({
   showGlobalOptions: true
 });
 
+// 重写帮助输出
 program.outputHelp = () => {
   const { showHelp } = require('../src/index');
   showHelp();
@@ -27,21 +31,26 @@ program.parse(process.argv);
 const options = program.opts();
 
 // 处理标准输入
-const stdinChunks = [];
+let stdinData = '';
 if (!process.stdin.isTTY && !options.setup && !options.listLanguages && !options.text) {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (data) => {
-    stdinChunks.push(data);
+    stdinData += data;
   });
   process.stdin.on('end', async () => {
-    const text = stdinChunks.join('').trim();
+    const text = stdinData.trim();
     if (text) {
       await handleTranslation(text, options.lang);
     } else {
-      handleCommandLine(options);
+      console.error(chalk.red('错误：管道输入为空，请提供要翻译的文本。'));
+      console.log(chalk.cyan('\n💡 使用示例：'));
+      console.log(chalk.white('   echo "hello world" | aitrans'));
+      console.log(chalk.white('   cat file.txt | aitrans -l en'));
+      process.exit(1);
     }
   });
 } else {
+  // 处理命令行参数
   handleCommandLine(options);
 }
 
@@ -88,21 +97,24 @@ function showSetupGuide() {
   console.log(chalk.blue('📚 更多帮助: aitrans --help\n'));
 }
 
+// 处理命令行参数的函数
 async function handleCommandLine(options) {
   try {
+    // 显示环境配置指南
     if (options.setup) {
       showSetupGuide();
       return;
     }
 
+    // 显示支持的语言列表
     if (options.listLanguages) {
-      const { listLanguages } = require('../src/index');
       listLanguages();
       return;
     }
 
+    // 获取要翻译的文本
     const text = options.text || program.args.join(' ');
-    const MAX_TEXT_LENGTH = 4000;
+    const MAX_TEXT_LENGTH = 4000; // 设置最大文本长度限制
 
     if (!text || text.trim() === '') {
       console.error(chalk.red('错误：请提供要翻译的文本。输入文本不能为空。'));
@@ -118,6 +130,7 @@ async function handleCommandLine(options) {
       process.exit(1);
     }
 
+    // 执行翻译
     await handleTranslation(text, options.lang);
   } catch (error) {
     console.error(chalk.red('错误：'), error.message);
@@ -125,10 +138,11 @@ async function handleCommandLine(options) {
   }
 }
 
+// 处理翻译的函数
 async function handleTranslation(text, targetLang) {
   try {
-    const { translate } = require('../src/index');
-    await translate(text, targetLang);
+    const result = await translate(text, targetLang);
+    console.log(result);
   } catch (error) {
     console.error(chalk.red('翻译错误：'), error.message);
     process.exit(1);

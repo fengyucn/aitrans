@@ -1,56 +1,68 @@
 const path = require('path');
+const os = require('os');
+const axios = require('axios');
+const chalk = require('chalk');
+const ora = require('ora');
+const dotenv = require('dotenv');
 const { isLanguageSupported, getLanguageName, getAllLanguages } = require('./languages');
 
-let API_ENDPOINT, API_KEY, AI_MODEL, AI_TEMPERATURE, AI_API_PROXY, axiosInstance;
-let configInitialized = false;
+// 检查是否是帮助或设置命令（这些命令不需要环境变量）
+const isHelpOrSetupCommand = process.argv.includes('--help') ||
+                            process.argv.includes('-h') ||
+                            process.argv.includes('--setup');
 
-function loadEnvConfig() {
-  if (configInitialized) return;
-  
-  const dotenv = require('dotenv');
-  const chalk = require('chalk');
-  
-  dotenv.config({ path: path.join(process.env.HOME, '.aitrans/.env') });
-  dotenv.config();
+// 只有在非帮助/设置命令时才检查环境变量
+if (!isHelpOrSetupCommand) {
+  // 加载环境变量 - 从用户主目录和当前目录加载
+  const homeDir = process.env.HOME || process.env.USERPROFILE || os.homedir();
+  dotenv.config({ path: path.join(homeDir, '.aitrans/.env') });
+  dotenv.config(); // 仍然支持当前目录的.env文件
 
+  // 检查必要的环境变量
   if (!process.env.AI_API_KEY) {
     console.error(chalk.red('错误：未设置 AI_API_KEY 环境变量'));
     console.error(chalk.yellow('请运行 "aitrans --setup" 查看配置指南'));
     process.exit(1);
   }
-  
-  configInitialized = true;
 }
 
+// 加载并验证环境变量配置（只有在需要时才加载）
+let API_ENDPOINT, API_KEY, AI_MODEL, AI_TEMPERATURE, AI_API_PROXY, axiosInstance;
+
 function initializeConfig() {
-  loadEnvConfig();
-  
-  const axios = require('axios');
-  
   API_ENDPOINT = process.env.AI_API_ENDPOINT || 'https://api.openai.com/v1/chat/completions';
   API_KEY = process.env.AI_API_KEY;
   AI_MODEL = process.env.AI_MODEL || 'gpt-3.5-turbo';
   AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.3');
   AI_API_PROXY = process.env.AI_API_PROXY;
 
-  const axiosConfig = {
+  // 解析代理配置
+  let proxyConfig = {};
+  if (AI_API_PROXY) {
+    try {
+      const proxyUrl = new URL(AI_API_PROXY);
+      proxyConfig = {
+        proxy: {
+          host: proxyUrl.hostname,
+          port: parseInt(proxyUrl.port, 10) || (proxyUrl.protocol === 'https:' ? 443 : 80),
+          ...(proxyUrl.protocol ? { protocol: proxyUrl.protocol } : {}),
+          ...(proxyUrl.username ? { auth: { username: proxyUrl.username, password: proxyUrl.password } } : {})
+        }
+      };
+    } catch (e) {
+      console.error(chalk.red(`警告：代理地址格式无效 (${AI_API_PROXY})，将不使用代理`));
+    }
+  }
+
+  // 创建 axios 实例
+  axiosInstance = axios.create({
     baseURL: API_ENDPOINT,
     headers: {
       'Authorization': `Bearer ${API_KEY}`,
       'Content-Type': 'application/json'
     },
-    timeout: 60000
-  };
-
-  if (AI_API_PROXY) {
-    const proxyUrl = new URL(AI_API_PROXY);
-    axiosConfig.proxy = {
-      host: proxyUrl.hostname,
-      port: proxyUrl.port
-    };
-  }
-
-  axiosInstance = axios.create(axiosConfig);
+    ...proxyConfig
+  });
 }
 
 /**
@@ -60,21 +72,25 @@ function initializeConfig() {
  * @returns {Promise<string>} 翻译结果
  */
 async function translate(text, targetLang = 'zh') {
+  // 确保配置已初始化
   if (!axiosInstance) {
     initializeConfig();
   }
 
+  // 验证目标语言
   if (!isLanguageSupported(targetLang)) {
     throw new Error(`不支持的目标语言: ${targetLang}`);
   }
 
-  const ora = require('ora');
+  // 创建加载动画
   const spinner = ora('正在翻译...').start();
 
   try {
+    // 构建提示信息
     const targetLanguageName = getLanguageName(targetLang);
     const prompt = `请将以下文本翻译成${targetLanguageName}，只返回翻译结果，不要包含任何其他内容：\n\n${text}`;
 
+    // 调用 AI API 进行翻译
     const response = await axiosInstance.post('', {
       model: AI_MODEL,
       messages: [
@@ -87,73 +103,17 @@ async function translate(text, targetLang = 'zh') {
           content: prompt
         }
       ],
-      temperature: AI_TEMPERATURE,
-      stream: true
-    }, {
-      responseType: 'stream'
+      temperature: AI_TEMPERATURE
     });
 
-    let fullContent = '';
-    let isFirstChunk = true;
-    let buffer = '';
-
-    return new Promise((resolve, reject) => {
-      response.data.on('data', (chunk) => {
-        buffer += chunk.toString();
-        let lines = buffer.split('\n');
-        buffer = lines.pop(); // 保留可能不完整的最后一行
-
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
-
-          const data = trimmedLine.slice(6);
-          if (data === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices[0]?.delta?.content;
-            if (content) {
-              if (isFirstChunk) {
-                spinner.stop();
-                isFirstChunk = false;
-              }
-              process.stdout.write(content);
-              fullContent += content;
-            }
-          } catch (e) {
-            // 忽略解析错误
-          }
-        }
-      });
-
-      response.data.on('end', () => {
-        if (!isFirstChunk) {
-          process.stdout.write('\n');
-          spinner.succeed('翻译完成');
-        } else {
-          spinner.fail('翻译失败：未收到有效回复');
-        }
-        resolve(fullContent.trim());
-      });
-
-      response.data.on('error', (err) => {
-        spinner.fail('翻译失败');
-        reject(err);
-      });
-    });
+    spinner.succeed('翻译完成');
+    return response.data.choices[0].message.content.trim();
   } catch (error) {
     spinner.fail('翻译失败');
     if (error.response) {
       if (error.response.status === 401 || error.response.status === 403) {
         throw new Error('API 密钥无效或没有权限，请检查 AI_API_KEY');
       }
-
-      // 流模式下错误信息可能在流中，这里做基础处理
-      if (error.response.data && typeof error.response.data.on === 'function') {
-        throw new Error(`API 请求失败 (状态码: ${error.response.status})，请检查网络或配置。`);
-      }
-
       throw new Error(`API 错误: ${error.response.data.message || '未知错误'} (状态码: ${error.response.status})`);
     } else if (error.request) {
       throw new Error('网络请求失败，请检查网络连接');
@@ -167,18 +127,11 @@ async function translate(text, targetLang = 'zh') {
  * 显示支持的语言列表
  */
 function listLanguages() {
-  const chalk = require('chalk');
-  
   console.log(chalk.cyan('\n支持的语言列表：'));
   console.log(chalk.cyan('================\n'));
 
   const languages = getAllLanguages();
-  let maxCodeLength = 0;
-  for (const lang of languages) {
-    if (lang.code.length > maxCodeLength) {
-      maxCodeLength = lang.code.length;
-    }
-  }
+  const maxCodeLength = Math.max(...languages.map(lang => lang.code.length));
 
   languages.forEach(({ code, name }) => {
     console.log(
@@ -194,8 +147,6 @@ function listLanguages() {
  * 显示帮助信息
  */
 function showHelp() {
-  const chalk = require('chalk');
-  
   console.log(chalk.cyan('\n🌍 AITrans - AI 命令行翻译工具'));
   console.log(chalk.cyan('================================\n'));
 
